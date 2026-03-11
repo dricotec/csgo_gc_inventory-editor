@@ -10,4 +10,6 @@
 
 <img width="1926" height="1035" alt="image" src="https://github.com/user-attachments/assets/7ebf6145-c686-4f49-b823-262cfc0ad788" />
 
+<img width="1924" height="1037" alt="image" src="https://github.com/user-attachments/assets/054e9953-721f-4b40-991c-20294691535c" />
+
 # IT USES CS2 ICON PREVIEWS, CREDITS TO https://github.com/ByMykel/CSGO-API/ FOR THE IMAGES.

@@ -41,6 +41,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "src/assets/**/*",
       "package.json"
     ],
     "win": {

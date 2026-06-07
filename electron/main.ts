@@ -12,9 +12,8 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     backgroundColor: "#111820",
-    // icon is set by electron-builder from package.json; don't reference src/ at runtime
+    icon: join(__dirname, "../src/assets/icon.ico"),
     webPreferences: {
-      // vite-plugin-electron builds the preload as preload.mjs
       preload: join(__dirname, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -29,7 +28,6 @@ function createWindow() {
     win.loadFile(join(__dirname, "../dist/index.html"));
   }
 
-  // Open external links in the system browser instead of Electron
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -41,7 +39,6 @@ function createWindow() {
 app.whenReady().then(() => {
   const win = createWindow();
 
-  // Window controls
   ipcMain.handle("window:minimize", () => {
     win.minimize();
   });
@@ -63,7 +60,6 @@ app.whenReady().then(() => {
     win.center();
   });
 
-  // Inventory file I/O
   ipcMain.handle("inventory:open", async () => {
     const result = await dialog.showOpenDialog(win, {
       title: "Open Inventory File",
@@ -105,18 +101,8 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-}).catch((err) => {
-  // Log crash to a file next to the exe so it's visible even without a console
-  try {
-    const logPath = join(app.getPath("userData"), "crash.log");
-    writeFileSync(logPath, String(err?.stack ?? err), "utf-8");
-  } catch {
-    // ignore secondary failures
-  }
-  app.quit();
 });
 
 app.on("window-all-closed", () => {
-  // On macOS apps stay alive until Cmd+Q; on all other platforms quit normally
   if (process.platform !== "darwin") app.quit();
 });

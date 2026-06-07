@@ -14,7 +14,8 @@ function createWindow() {
     backgroundColor: "#111820",
     icon: join(__dirname, "../src/assets/icon.ico"),
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
+      // vite-plugin-electron builds the preload as preload.mjs
+      preload: join(__dirname, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false

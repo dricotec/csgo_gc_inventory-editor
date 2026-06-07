@@ -2,6 +2,8 @@
 
 **csgo_gc_inventory-editor** is a graphical inventory editor for [Mikko’s `csgo_gc`](https://github.com/mikkokko/csgo_gc).
 
+# Can't be bothered right now, will fix 1.0.3 later.
+
 ---
 # If you find this project useful, please consider giving it a ⭐ to support its development
 

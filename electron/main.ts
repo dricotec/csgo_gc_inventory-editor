@@ -12,7 +12,7 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     backgroundColor: "#111820",
-    icon: join(__dirname, "../src/assets/icon.ico"),
+    // icon is set by electron-builder from package.json; don't reference src/ at runtime
     webPreferences: {
       // vite-plugin-electron builds the preload as preload.mjs
       preload: join(__dirname, "preload.mjs"),
@@ -105,6 +105,15 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch((err) => {
+  // Log crash to a file next to the exe so it's visible even without a console
+  try {
+    const logPath = join(app.getPath("userData"), "crash.log");
+    writeFileSync(logPath, String(err?.stack ?? err), "utf-8");
+  } catch {
+    // ignore secondary failures
+  }
+  app.quit();
 });
 
 app.on("window-all-closed", () => {

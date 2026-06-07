@@ -107,5 +107,6 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  // On macOS apps stay alive until Cmd+Q; on all other platforms quit normally
   if (process.platform !== "darwin") app.quit();
 });

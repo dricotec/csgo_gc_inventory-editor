@@ -384,12 +384,64 @@ body {
   color: rgba(255, 255, 255, 0.6);
 }
 .sidebar__footer {
-  margin-top: auto;
   padding-top: 12px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.18em;
   color: rgba(240, 240, 240, 0.5);
+}
+
+.sidebar__scale {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar__scale-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(204, 204, 204, 0.6);
+}
+
+.sidebar__scale-slider {
+  width: 100%;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  cursor: pointer;
+}
+
+.sidebar__scale-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e4ae39;
+  border: 2px solid #111820;
+  box-shadow: 0 0 0 2px rgba(228, 174, 57, 0.4);
+}
+
+.sidebar__scale-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e4ae39;
+  border: 2px solid #111820;
+}
+
+.sidebar__scale-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: rgba(204, 204, 204, 0.4);
+  letter-spacing: 0.06em;
 }
 
 .sidebar__title {

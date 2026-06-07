@@ -1,6 +1,6 @@
 {
   "name": "csgo-gc-inventory-editor-ui",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "author": "drico <3",
@@ -9,6 +9,9 @@
     "dev": "vite",
     "build:renderer": "vite build",
     "build": "npm run build:renderer && electron-builder --win",
+    "build:linux": "npm run build:renderer && electron-builder --linux",
+    "build:linux:zip": "npm run build:renderer && electron-builder --linux tar.gz",
+    "build:all": "npm run build:renderer && electron-builder --win --linux",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -41,8 +44,22 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
       "icon": "src/assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "tar.gz", "arch": ["x64"] }
+      ],
+      "icon": "src/assets/icon.png",
+      "category": "Utility",
+      "maintainer": "drico",
+      "description": "CS:GO GC Inventory Editor"
     }
   }
 }

@@ -615,6 +615,9 @@ const cs2SkinNames = new Set(
   ].map((name) => name.toLowerCase())
 );
 
+// there most likely is a better way to filter CS2 Skins and Items but im lazyyy....
+// if you're reading this and you can code, please make a PR on this :)
+
 const wearSuffixRegex =
   /\s*\((factory new|minimal wear|field-tested|well-worn|battle-scarred)\)\s*$/i;
 
@@ -1221,6 +1224,15 @@ const App = () => {
   const [credits, setCredits] = useState<Contributor[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [creditsError, setCreditsError] = useState<string | null>(null);
+  const [uiScale, setUiScale] = useState(() => {
+    const saved = localStorage.getItem("uiScale");
+    return saved ? Number(saved) : 1;
+  });
+
+  const handleUiScaleChange = (value: number) => {
+    setUiScale(value);
+    localStorage.setItem("uiScale", String(value));
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -1263,7 +1275,31 @@ const App = () => {
           }
         }),
 
-      Promise.resolve()
+      // Load skins on startup so inventory items show correct skin names immediately
+      fetch(SKINS_URL)
+        .then((response) => response.json())
+        .then((data) => {
+          if (!mounted) return;
+          setSkinsNotGrouped(data as SkinItem[]);
+          setSkinsLoaded(true);
+        })
+        .catch(() => {}),
+
+      fetch(KNIFE_SKINS_URL)
+        .then((response) => response.json())
+        .then((data) => {
+          if (!mounted) return;
+          const allSkins = data as SkinItem[];
+          const knifeOnly = allSkins.filter((skin) => {
+            const weaponId = skin.weapon?.weapon_id
+              ? String(skin.weapon.weapon_id)
+              : "";
+            return knifeDefIndexSet.has(weaponId);
+          });
+          setKnifeSkins(knifeOnly);
+          setKnifeSkinsLoaded(true);
+        })
+        .catch(() => {})
     ];
 
     Promise.allSettled(loaders).finally(() => {
@@ -1288,11 +1324,12 @@ const App = () => {
 
   useEffect(() => {
     if (activePage !== "library") return;
-  if (skinsLoaded && knifeSkinsLoaded && stickersLoaded && collectiblesLoaded && musicKitsLoaded) return;
+    if (skinsLoaded && knifeSkinsLoaded && stickersLoaded && collectiblesLoaded && musicKitsLoaded) return;
     let mounted = true;
     setLibraryLoading(true);
     const loaders = [] as Promise<void>[];
 
+    // skins and knife skins are already loaded on startup; only re-fetch if somehow missing
     if (!skinsLoaded) {
       loaders.push(
         fetch(SKINS_URL)
@@ -2348,6 +2385,26 @@ const App = () => {
           >
             Credits
           </button>
+          <div className="sidebar__scale">
+            <div className="sidebar__scale-label">
+              <span>UI Scale</span>
+              <span>{Math.round(uiScale * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              className="sidebar__scale-slider"
+              min="0.6"
+              max="1.4"
+              step="0.05"
+              value={uiScale}
+              onChange={(event) => handleUiScaleChange(Number(event.target.value))}
+            />
+            <div className="sidebar__scale-ticks">
+              <span>60%</span>
+              <span>100%</span>
+              <span>140%</span>
+            </div>
+          </div>
           <div className="sidebar__footer">made by drico</div>
         </aside>
 
@@ -2355,6 +2412,7 @@ const App = () => {
           className={`app__main mainmenu-content__container mainmenu-content__container--inventory ${
             activePage === "inventory" ? "app__main--inventory" : ""
           }`}
+          style={{ zoom: uiScale }}
         >
           {activePage === "inventory" && (
             <div className="home-grid">

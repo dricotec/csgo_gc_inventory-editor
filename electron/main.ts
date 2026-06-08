@@ -1,108 +1,137 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const isDev = !app.isPackaged;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1280,
+let mainWindow: BrowserWindow | null = null;
+
+const createWindow = async () => {
+  mainWindow = new BrowserWindow({
+    width: 1200,
     height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 960,
+    minHeight: 640,
+    resizable: true,
+    maximizable: true,
+    fullscreenable: true,
     frame: false,
-    backgroundColor: "#111820",
-    icon: join(__dirname, "../src/assets/icon.ico"),
+    titleBarStyle: "hidden",
+    backgroundColor: "#0b0f19",
     webPreferences: {
       preload: join(__dirname, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      devTools: false
     }
   });
 
-  if (isDev) {
-    win.loadURL("http://localhost:5173");
-    win.webContents.openDevTools();
-  } else {
-    win.loadFile(join(__dirname, "../dist/index.html"));
-  }
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
     return { action: "deny" };
   });
 
-  return win;
-}
-
-app.whenReady().then(() => {
-  const win = createWindow();
-
-  ipcMain.handle("window:minimize", () => {
-    win.minimize();
-  });
-
-  ipcMain.handle("window:toggleMaximize", () => {
-    if (win.isMaximized()) {
-      win.unmaximize();
-    } else {
-      win.maximize();
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url !== mainWindow?.webContents.getURL()) {
+      event.preventDefault();
+      void shell.openExternal(url);
     }
   });
 
-  ipcMain.handle("window:close", () => {
-    win.close();
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const isDevtools =
+      input.key === "F12" ||
+      (input.control && input.shift && ["I", "J", "C"].includes(input.key));
+    if (isDevtools) {
+      event.preventDefault();
+    }
   });
 
-  ipcMain.handle("window:setSize", (_event, { width, height }: { width: number; height: number }) => {
-    win.setSize(width, height, true);
-    win.center();
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  } else {
+    await mainWindow.loadFile(join(__dirname, "../dist/index.html"));
+  }
+};
+
+ipcMain.handle("window:minimize", () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle("window:toggle-maximize", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle("window:close", () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle("window:set-size", (_event, payload: { width: number; height: number }) => {
+  if (!mainWindow) return;
+  mainWindow.setSize(payload.width, payload.height);
+  mainWindow.center();
+});
+
+ipcMain.handle("inventory:open", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Open inventory.txt",
+    defaultPath: "inventory.txt",
+    filters: [{ name: "Inventory (.txt)", extensions: ["txt"] }],
+    properties: ["openFile"]
   });
 
-  ipcMain.handle("inventory:open", async () => {
-    const result = await dialog.showOpenDialog(win, {
-      title: "Open Inventory File",
-      filters: [
-        { name: "Text / KV Files", extensions: ["txt", "kv", "*"] },
-        { name: "All Files", extensions: ["*"] }
-      ],
-      properties: ["openFile"]
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = result.filePaths[0];
+  const content = await readFile(filePath, "utf-8");
+  return { filePath, content };
+});
+
+ipcMain.handle(
+  "inventory:save",
+  async (_event: IpcMainInvokeEvent, payload: { filePath?: string; content: string }) => {
+  let filePath = payload.filePath;
+
+  if (!filePath) {
+    const result = await dialog.showSaveDialog({
+      title: "Save inventory.txt",
+      filters: [{ name: "Inventory", extensions: ["txt", "vdf"] }]
     });
 
-    if (result.canceled || result.filePaths.length === 0) return null;
-
-    const filePath = result.filePaths[0];
-    const content = readFileSync(filePath, "utf-8");
-    return { filePath, content };
-  });
-
-  ipcMain.handle("inventory:save", async (_event, { filePath, content }: { filePath?: string; content: string }) => {
-    let targetPath = filePath;
-
-    if (!targetPath) {
-      const result = await dialog.showSaveDialog(win, {
-        title: "Save Inventory File",
-        defaultPath: "inventory.txt",
-        filters: [
-          { name: "Text / KV Files", extensions: ["txt", "kv"] },
-          { name: "All Files", extensions: ["*"] }
-        ]
-      });
-
-      if (result.canceled || !result.filePath) return null;
-      targetPath = result.filePath;
+    if (result.canceled || !result.filePath) {
+      return null;
     }
 
-    writeFileSync(targetPath, content, "utf-8");
-    return { filePath: targetPath };
-  });
+    filePath = result.filePath;
+  }
+
+  await writeFile(filePath, payload.content, "utf-8");
+    return { filePath };
+  }
+);
+
+app.whenReady().then(() => {
+  createWindow();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });

@@ -615,9 +615,6 @@ const cs2SkinNames = new Set(
   ].map((name) => name.toLowerCase())
 );
 
-// there most likely is a better way to filter CS2 Skins and Items but im lazyyy....
-// if you're reading this and you can code, please make a PR on this :)
-
 const wearSuffixRegex =
   /\s*\((factory new|minimal wear|field-tested|well-worn|battle-scarred)\)\s*$/i;
 
@@ -1190,6 +1187,8 @@ const App = () => {
   const [stickersLoaded, setStickersLoaded] = useState(false);
   const [collectiblesLoaded, setCollectiblesLoaded] = useState(false);
   const [musicKitsLoaded, setMusicKitsLoaded] = useState(false);
+  // true once the user loads an inventory — triggers skin data fetch even before visiting Library
+  const [skinDataRequested, setSkinDataRequested] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
@@ -1224,15 +1223,10 @@ const App = () => {
   const [credits, setCredits] = useState<Contributor[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [creditsError, setCreditsError] = useState<string | null>(null);
-  const [uiScale, setUiScale] = useState(() => {
+  const [uiScale, setUiScale] = useState<number>(() => {
     const saved = localStorage.getItem("uiScale");
-    return saved ? Number(saved) : 1;
+    return saved ? Number(saved) : 1.0;
   });
-
-  const handleUiScaleChange = (value: number) => {
-    setUiScale(value);
-    localStorage.setItem("uiScale", String(value));
-  };
 
   useEffect(() => {
     let mounted = true;
@@ -1275,31 +1269,7 @@ const App = () => {
           }
         }),
 
-      // Load skins on startup so inventory items show correct skin names immediately
-      fetch(SKINS_URL)
-        .then((response) => response.json())
-        .then((data) => {
-          if (!mounted) return;
-          setSkinsNotGrouped(data as SkinItem[]);
-          setSkinsLoaded(true);
-        })
-        .catch(() => {}),
-
-      fetch(KNIFE_SKINS_URL)
-        .then((response) => response.json())
-        .then((data) => {
-          if (!mounted) return;
-          const allSkins = data as SkinItem[];
-          const knifeOnly = allSkins.filter((skin) => {
-            const weaponId = skin.weapon?.weapon_id
-              ? String(skin.weapon.weapon_id)
-              : "";
-            return knifeDefIndexSet.has(weaponId);
-          });
-          setKnifeSkins(knifeOnly);
-          setKnifeSkinsLoaded(true);
-        })
-        .catch(() => {})
+      Promise.resolve()
     ];
 
     Promise.allSettled(loaders).finally(() => {
@@ -1323,13 +1293,26 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (activePage !== "library") return;
+    localStorage.setItem("uiScale", String(uiScale));
+    const scale = uiScale;
+    const inv = 1 / scale;
+    const appEl = document.querySelector<HTMLElement>(".app");
+    if (appEl) {
+      appEl.style.transform = `scale(${scale})`;
+      appEl.style.transformOrigin = "top left";
+      // Expand the element so after scaling it still fills the full viewport
+      appEl.style.width = `${inv * 100}vw`;
+      appEl.style.height = `${inv * 100}vh`;
+    }
+  }, [uiScale]);
+
+  useEffect(() => {
+    if (activePage !== "library" && !skinDataRequested) return;
     if (skinsLoaded && knifeSkinsLoaded && stickersLoaded && collectiblesLoaded && musicKitsLoaded) return;
     let mounted = true;
     setLibraryLoading(true);
     const loaders = [] as Promise<void>[];
 
-    // skins and knife skins are already loaded on startup; only re-fetch if somehow missing
     if (!skinsLoaded) {
       loaders.push(
         fetch(SKINS_URL)
@@ -1431,7 +1414,7 @@ const App = () => {
     return () => {
       mounted = false;
     };
-  }, [activePage, skinsLoaded, knifeSkinsLoaded, stickersLoaded, collectiblesLoaded, musicKitsLoaded]);
+  }, [activePage, skinDataRequested, skinsLoaded, knifeSkinsLoaded, stickersLoaded, collectiblesLoaded, musicKitsLoaded]);
 
   useEffect(() => {
     if (!libraryMultiSelect) {
@@ -1726,6 +1709,8 @@ const App = () => {
     setFilePath(result.filePath);
     setSelectedId(parsed.items[0]?.id ?? null);
     setStatus(`Loaded ${parsed.items.length} items.`);
+    // trigger skin data fetch so inventory cards show skin names immediately
+    setSkinDataRequested(true);
   };
 
   const handleSave = async () => {
@@ -2386,24 +2371,28 @@ const App = () => {
             Credits
           </button>
           <div className="sidebar__scale">
-            <div className="sidebar__scale-label">
-              <span>UI Scale</span>
-              <span>{Math.round(uiScale * 100)}%</span>
+            <div className="sidebar__scale-header">
+              <span className="sidebar__scale-label">UI Scale</span>
+              <span className="sidebar__scale-value">{Math.round(uiScale * 100)}%</span>
             </div>
             <input
-              type="range"
               className="sidebar__scale-slider"
+              type="range"
               min="0.6"
               max="1.4"
               step="0.05"
               value={uiScale}
-              onChange={(event) => handleUiScaleChange(Number(event.target.value))}
+              onChange={(event) => setUiScale(Number(event.target.value))}
+              title="Adjust UI scale"
             />
-            <div className="sidebar__scale-ticks">
-              <span>60%</span>
-              <span>100%</span>
-              <span>140%</span>
-            </div>
+            <button
+              className="sidebar__scale-reset"
+              type="button"
+              onClick={() => setUiScale(1.0)}
+              title="Reset to 100%"
+            >
+              Reset
+            </button>
           </div>
           <div className="sidebar__footer">made by drico</div>
         </aside>
@@ -2412,7 +2401,6 @@ const App = () => {
           className={`app__main mainmenu-content__container mainmenu-content__container--inventory ${
             activePage === "inventory" ? "app__main--inventory" : ""
           }`}
-          style={{ zoom: uiScale }}
         >
           {activePage === "inventory" && (
             <div className="home-grid">
@@ -2420,7 +2408,7 @@ const App = () => {
                 <section className="panel panel--list transition-all duration-200 inv-category Active">
           <div className="panel__header content-navbar">
             <h2>Inventory</h2>
-            <span className="hint">{dataLoading ? "Loading library data…" : ""}</span>
+            <span className="hint">{dataLoading ? "Loading library data…" : !skinsLoaded && skinDataRequested ? "Loading skin data…" : ""}</span>
           </div>
           <div className="dock-bar">
             <button className="btn" onClick={handleLoad}>

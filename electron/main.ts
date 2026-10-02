@@ -29,6 +29,14 @@ const createWindow = async () => {
     }
   });
 
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ["ws://127.0.0.1:13001/*"] },
+    (details, callback) => {
+      details.requestHeaders["Origin"] = "https://csgo-gc-inventory-editor.invalid";
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { parseInventory, serializeInventory, type InventoryDoc, type InventoryItem } from "./lib/inventory";
 import agents from "./data/agents.json";
+import { useInventory } from "./lib/useInventory";
+import { CommitInput } from "./CommitInput";
 
 const BASE_WEAPONS_URL =
   "https://raw.githubusercontent.com/ByMykel/CSGO-API/refs/heads/main/public/api/en/base_weapons.json";
@@ -1169,8 +1171,12 @@ const findSkinMatch = (
 };
 
 const App = () => {
-  const [inventoryDoc, setInventoryDoc] = useState<InventoryDoc>(emptyDoc);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { inventoryDoc, setInventoryDoc, connection, notice, connect, allocateId } = useInventory(
+    emptyDoc, id => setSelectedId(id)
+  );
+  const liveMode = connection !== "offline";
+  const editingBlocked = connection === "connecting" || connection === "lost";
   const [filePath, setFilePath] = useState<string | null>(null);
   const [baseWeapons, setBaseWeapons] = useState<ApiItem[]>([]);
   const [crateItems, setCrateItems] = useState<ApiItem[]>([]);
@@ -1227,6 +1233,12 @@ const App = () => {
     const saved = localStorage.getItem("uiScale");
     return saved ? Number(saved) : 1.0;
   });
+
+  useEffect(() => {
+    if (connection === "connected") {
+      setSelectedId(current => inventoryDoc.items.some(item => item.id === current) ? current : inventoryDoc.items[0]?.id ?? null);
+    }
+  }, [connection, inventoryDoc]);
 
   useEffect(() => {
     let mounted = true;
@@ -1701,6 +1713,7 @@ const App = () => {
   }, [inventoryPage, totalInventoryPages]);
 
   const handleLoad = async () => {
+    if (liveMode) return;
     const result = await window.inventoryApi.openInventory();
     if (!result) return;
     const parsed = parseInventory(result.content);
@@ -1714,6 +1727,7 @@ const App = () => {
   };
 
   const handleSave = async () => {
+    if (liveMode) return;
     const content = serializeInventory(inventoryDoc);
     const result = await window.inventoryApi.saveInventory({ filePath: filePath ?? undefined, content });
     if (!result) return;
@@ -1722,15 +1736,13 @@ const App = () => {
   };
 
   const handleAdd = () => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     setInventoryDoc({
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
   };
 
   const handleRemove = () => {
@@ -1797,7 +1809,7 @@ const App = () => {
         if (trimmed && Number.isNaN(wearFloat)) {
           setStatus(`Invalid wear for ${label}; using random.`);
         }
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         const weaponId = entry.item.weapon?.weapon_id
           ? String(entry.item.weapon.weapon_id)
           : newItem.def_index;
@@ -1828,26 +1840,26 @@ const App = () => {
         }
         applyKnifeGloveDefaults(newItem, weaponId);
       } else if (entry.kind === "sticker") {
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         newItem.def_index = STICKER_DEF_INDEX;
         newItem.attributes["113"] = entry.item.sticker_index;
         newItem.rarity = DEFAULT_RARITY_ID;
         newItem.quality = DEFAULT_QUALITY_ID;
       } else if (entry.kind === "agent") {
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         newItem.def_index = entry.item.def_index;
         const rarityId = getRarityIdFromName(entry.item.rarity?.name);
         newItem.rarity = rarityId ?? DEFAULT_RARITY_ID;
         newItem.quality = DEFAULT_QUALITY_ID;
       } else if (entry.kind === "case" || entry.kind === "key" || entry.kind === "vanilla") {
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         newItem.def_index = normalizeDefIndex(entry.item.def_index, newItem.def_index);
         const rarityId = getRarityIdFromName(entry.item.rarity?.name);
         newItem.rarity = rarityId ?? DEFAULT_RARITY_ID;
         newItem.quality = DEFAULT_QUALITY_ID;
         applyKnifeGloveDefaults(newItem, newItem.def_index);
       } else if (entry.kind === "music") {
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         newItem.def_index = MUSIC_KIT_ITEM_DEF_INDEX;
         if (entry.item.def_index) {
           newItem.attributes[MUSIC_KIT_ATTRIBUTE_ID] = entry.item.def_index;
@@ -1863,7 +1875,7 @@ const App = () => {
           newItem.quality = DEFAULT_QUALITY_ID;
         }
       } else if (entry.kind === "collectible") {
-        newItem = getDefaultItem(String(nextId++));
+        newItem = getDefaultItem(liveMode ? allocateId() : String(nextId++));
         newItem.def_index = entry.item.def_index ?? newItem.def_index;
         const rarityId = getRarityIdFromName(entry.item.rarity?.name);
         newItem.rarity = rarityId ?? DEFAULT_RARITY_ID;
@@ -1879,7 +1891,7 @@ const App = () => {
 
     if (addedCount > 0) {
       setInventoryDoc({ ...inventoryDoc, items: nextItems });
-      setSelectedId(nextItems[nextItems.length - 1]?.id ?? selectedId);
+      if (!liveMode) setSelectedId(nextItems[nextItems.length - 1]?.id ?? selectedId);
     }
     setLibrarySelection({});
     setLibraryAddProgress(null);
@@ -2008,19 +2020,18 @@ const App = () => {
 
   const handleDuplicate = () => {
     if (!selectedItem) return;
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const clone: InventoryItem = {
       ...selectedItem,
       id: nextId,
-      attributes: { ...selectedItem.attributes }
+      attributes: { ...selectedItem.attributes },
+      equipped_state: {}
     };
     setInventoryDoc({
       ...inventoryDoc,
       items: [...items, clone]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Duplicated item ${selectedItem.id}.`);
   };
 
@@ -2041,9 +2052,7 @@ const App = () => {
   };
 
   const createItemFromSkin = (skin: SkinItem, wearRangeOverride?: readonly [number, number] | null) => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     const weaponId = skin.weapon?.weapon_id ? String(skin.weapon.weapon_id) : newItem.def_index;
     newItem.def_index = weaponId;
@@ -2073,7 +2082,7 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added ${skin.name}.`);
   };
 
@@ -2094,9 +2103,7 @@ const App = () => {
       setStatus(`Updated sticker item ${selectedItem.id} to ${sticker.name}.`);
       return;
     }
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     newItem.def_index = STICKER_DEF_INDEX;
     newItem.attributes["113"] = sticker.sticker_index;
@@ -2106,14 +2113,12 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added sticker item: ${sticker.name}.`);
   };
 
   const addAgentFromLibrary = (agent: AgentItem) => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     newItem.def_index = normalizeDefIndex(agent.def_index, newItem.def_index);
     const rarityId = getRarityIdFromName(agent.rarity?.name);
@@ -2123,14 +2128,12 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added ${agent.name}.`);
   };
 
   const addContainerFromLibrary = (container: ApiItem) => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     newItem.def_index = normalizeDefIndex(container.def_index, newItem.def_index);
     const rarityId = getRarityIdFromName(container.rarity?.name);
@@ -2141,14 +2144,12 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added ${container.name ?? "Item"}.`);
   };
 
   const addCollectibleFromLibrary = (collectible: CollectibleItem) => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     newItem.def_index = normalizeDefIndex(collectible.def_index, newItem.def_index);
     const rarityId = getRarityIdFromName(collectible.rarity?.name);
@@ -2158,14 +2159,12 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added ${collectible.name ?? "Collectible"}.`);
   };
 
   const addMusicKitFromLibrary = (kit: MusicKitItem) => {
-    const nextId = String(
-      items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
-    );
+    const nextId = allocateId();
     const newItem = getDefaultItem(nextId);
     newItem.def_index = MUSIC_KIT_ITEM_DEF_INDEX;
     if (kit.def_index) {
@@ -2185,7 +2184,7 @@ const App = () => {
       ...inventoryDoc,
       items: [...items, newItem]
     });
-    setSelectedId(nextId);
+    if (!liveMode) setSelectedId(nextId);
     setStatus(`Added ${kit.name ?? "Music Kit"}.`);
   };
 
@@ -2398,6 +2397,13 @@ const App = () => {
         </aside>
 
         <main
+          onClickCapture={event => {
+            const target = event.target;
+            if (editingBlocked && !(target instanceof Element && target.closest("[data-connection-control]"))) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
           className={`app__main mainmenu-content__container mainmenu-content__container--inventory ${
             activePage === "inventory" ? "app__main--inventory" : ""
           }`}
@@ -2411,16 +2417,29 @@ const App = () => {
             <span className="hint">{dataLoading ? "Loading library data…" : !skinsLoaded && skinDataRequested ? "Loading skin data…" : ""}</span>
           </div>
           <div className="dock-bar">
-            <button className="btn" onClick={handleLoad}>
+            <button
+              className="btn"
+              data-connection-control
+              disabled={connection === "connecting" || connection === "connected"}
+              onClick={() => {
+                setAttributesOpen(false);
+                setContextMenu(null);
+                setSkinDataRequested(true);
+                connect();
+              }}
+            >
+              {connection === "offline" ? "Connect to game" : connection === "connecting" ? "Connecting…" : connection === "connected" ? "Connected to game" : "Reconnect to game"}
+            </button>
+            <button className="btn" onClick={handleLoad} disabled={liveMode}>
               Load
             </button>
-            <button className="btn btn--primary" onClick={handleSave}>
+            <button className="btn btn--primary" onClick={handleSave} disabled={liveMode}>
               Save
             </button>
-            <button className="btn" onClick={handleAdd}>
+            <button className="btn" onClick={handleAdd} disabled={editingBlocked}>
               Add
             </button>
-            <button className="btn btn--danger" onClick={handleRemove} disabled={!selectedItem}>
+            <button className="btn btn--danger" onClick={handleRemove} disabled={!selectedItem || editingBlocked}>
               Remove
             </button>
           </div>
@@ -3213,10 +3232,10 @@ const App = () => {
       </div>
 
       <footer className="app__footer">
-        <span>{status ?? "Ready."}</span>
-        {filePath && <span>File: {filePath}</span>}
+        <span role="status">{notice || status || "Ready."}</span>
+        {!liveMode && filePath && <span>File: {filePath}</span>}
       </footer>
-      {contextMenu && (
+      {contextMenu && !editingBlocked && (
         <div
           className="context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
@@ -3323,9 +3342,9 @@ const App = () => {
           </div>
         </div>
       )}
-      {attributesOpen && selectedItem && (
+      {attributesOpen && selectedItem && !editingBlocked && (
         <div className="modal-backdrop" onClick={() => setAttributesOpen(false)}>
-          <div className="modal attributes-modal" onClick={(event) => event.stopPropagation()}>
+          <div key={selectedItem.id} className="modal attributes-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal__header content-navbar inv-popup">
               <div>
                 <h3>Attributes</h3>
@@ -3360,15 +3379,16 @@ const App = () => {
               <div className="form-grid">
                 <label>
                   Item ID
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
+                    readOnly={liveMode}
                     value={selectedItem.id}
                     onChange={(event) => updateField("id", event.target.value)}
                   />
                 </label>
                 <label>
                   Inventory slot
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
                     value={selectedItem.inventory}
                     onChange={(event) => updateField("inventory", event.target.value)}
@@ -3376,7 +3396,7 @@ const App = () => {
                 </label>
                 <label>
                   def_index
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
                     value={selectedItem.def_index}
                     onChange={(event) => updateField("def_index", event.target.value)}
@@ -3384,7 +3404,7 @@ const App = () => {
                 </label>
                 <label>
                   Level
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
                     value={selectedItem.level}
                     onChange={(event) => updateField("level", event.target.value)}
@@ -3426,7 +3446,7 @@ const App = () => {
                 </label>
                 <label>
                   Flags
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
                     value={selectedItem.flags}
                     onChange={(event) => updateField("flags", event.target.value)}
@@ -3434,7 +3454,7 @@ const App = () => {
                 </label>
                 <label>
                   Origin
-                  <input
+                  <CommitInput live={liveMode}
                     className="input"
                     value={selectedItem.origin}
                     onChange={(event) => updateField("origin", event.target.value)}
@@ -3447,7 +3467,7 @@ const App = () => {
                   <div className="form-grid form-grid--secondary">
                     <label>
                       Finish catalog (attribute 6)
-                      <input
+                      <CommitInput live={liveMode} numeric="float" allowEmpty
                         className="input"
                         value={finishCatalogValue}
                         onChange={(event) => updateAttribute("6", event.target.value)}
@@ -3455,7 +3475,7 @@ const App = () => {
                     </label>
                     <label>
                       Pattern template (attribute 7)
-                      <input
+                      <CommitInput live={liveMode} numeric="float" allowEmpty
                         className="input"
                         value={selectedItem.attributes["7"] ?? ""}
                         onChange={(event) => updateAttribute("7", event.target.value)}
@@ -3463,7 +3483,7 @@ const App = () => {
                     </label>
                     <label>
                       Float (attribute 8)
-                      <input
+                      <CommitInput live={liveMode} numeric="float" allowEmpty
                         className="input"
                         value={(selectedItem.attributes["8"] ?? wearValue.toFixed(6))}
                         onChange={(event) => updateAttribute("8", event.target.value)}
@@ -3533,9 +3553,10 @@ const App = () => {
                       </label>
                       <label>
                         Sticker kit (attribute 113)
-                        <input
+                        <CommitInput live={liveMode}
                           className="input"
-                          value={stickerKit}
+                        value={stickerKit}
+                          allowEmpty
                           onChange={(event) => updateAttribute("113", event.target.value)}
                         />
                       </label>
@@ -3557,17 +3578,19 @@ const App = () => {
                   <div className="form-grid form-grid--secondary">
                     <label>
                       StatTrak™ count (attribute 80)
-                      <input
+                      <CommitInput live={liveMode}
                         className="input"
                         value={selectedItem.attributes["80"] ?? "0"}
+                        allowEmpty
                         onChange={(event) => updateAttribute("80", event.target.value)}
                       />
                     </label>
                     <label>
                       StatTrak™ type (attribute 81)
-                      <input
+                      <CommitInput live={liveMode}
                         className="input"
                         value={selectedItem.attributes["81"] ?? "0"}
+                        allowEmpty
                         onChange={(event) => updateAttribute("81", event.target.value)}
                       />
                     </label>
@@ -3578,7 +3601,7 @@ const App = () => {
           </div>
         </div>
       )}
-      {wearPickerOpen && (
+      {wearPickerOpen && !editingBlocked && (
         <div className="modal-backdrop" onClick={() => setWearPickerOpen(false)}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal__header content-navbar inv-popup">

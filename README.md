@@ -17,9 +17,31 @@ It allows users to manage their inventory without manually editing text files, m
 
 * Graphical interface for editing `inventory.txt`
 * Add, modify, and remove inventory items
+* Realtime editing of the running game's inventory
 * Manage your inventory visually
 * Integrated CS2 icon previews
 * Lightweight and efficient
+
+## Live editing
+
+Set this value in the GC's `config.txt` before starting the game:
+
+```text
+"inventory_editor_origin" "https://csgo-gc-inventory-editor.invalid"
+```
+
+This is not a website address. It's an identifier the GC checks before allowing the
+inventory editor to connect. Leave the value empty to disable the editor server.
+
+Start the game with the latest GC installed, then choose **Connect to game** in the Inventory tab.
+The editor connects to the GC and replaces the displayed inventory with the game's inventory.
+Load and Save are disabled while connected: additions, edits, duplicates and removals are sent
+automatically, and game changes appear in the editor. The GC handles saving its inventory file.
+
+Item IDs are assigned by the GC and are read-only in live mode. If the connection drops,
+editing stops and recent changes may not have reached the game. Choose **Reconnect to game**
+to discard the frozen view and load a fresh inventory snapshot. There is no automatic
+reconnect or replay. A failed initial connection keeps the offline document available.
 
 ---
 
